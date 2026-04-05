@@ -1,0 +1,234 @@
+**Yes, absolutely!** The code I provided in my previous message is exactly that—a single, standalone HTML file designed specifically to be hosted on **GitHub Pages** (because it runs 100% in the browser without needing a Python backend).
+
+If you missed it or it didn't load properly, here is the complete `index.html` file again. 
+
+### How to host it in 3 simple steps:
+1. Create a new file named exactly **`index.html`** and paste the code below into it.
+2. Upload it to your GitHub repository.
+3. Go to your repository **Settings > Pages > Source**, select `Main Branch`, and click **Save**. Your site will be live at `https://yourusername.github.io/yourrepo/`.
+
+Here is the complete code:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feasibility Price Extractor v6.1</title>
+    <!-- Libraries to read/write Excel directly in the browser -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #e6edf3; --sub: #8b949e; --accent: #58a6ff; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .header { background: linear-gradient(90deg,#0d1f38,#1a3a6e); padding: 20px; border-radius: 10px; border: 1px solid #1f3a6e; margin-bottom: 25px; }
+        .header h1 { margin: 0; color: #e6edf3; } .header p { margin: 5px 0 0 0; color: #7ab4ff; font-size: 14px; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .filter-row { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+        .filter-row label { color: var(--sub); font-size: 14px; }
+        .filter-row input[type="date"] { background: #21262d; color: var(--text); border: 1px solid var(--border); padding: 8px; border-radius: 4px; }
+        input[type="file"] { margin-top: 15px; color: var(--sub); }
+        button { background: var(--accent); color: #0d1117; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; margin-right: 10px; }
+        button:hover { opacity: 0.9; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { background: #21262d; color: var(--accent); position: sticky; top: 0; }
+        tr:hover { background: #1c2128; }
+        .tab-buttons button { background: transparent; color: var(--sub); border: 1px solid var(--border); margin-bottom: -1px; border-bottom: none; border-radius: 6px 6px 0 0; }
+        .tab-buttons button.active { color: var(--accent); background: var(--card); border-bottom: 1px solid var(--card); }
+        .tab-content { border: 1px solid var(--border); border-radius: 0 8px 8px 8px; padding: 15px; background: var(--card); max-height: 600px; overflow-y: auto; }
+        .tab-pane { display: none; } .tab-pane.active { display: block; }
+        .loader { border: 4px solid var(--border); border-top: 4px solid var(--accent); border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; margin-right: 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>📦 Feasibility Price Extractor</h1>
+        <p>SAP Excel Format | Air/Sea Split | Outlier-Proof Customs % | 100% Client-Side</p>
+    </div>
+
+    <div class="card">
+        <div class="filter-row">
+            <div><label>Start Date (Optional):</label><br><input type="date" id="startDate"></div>
+            <div><label>End Date (Optional):</label><br><input type="date" id="endDate"></div>
+        </div>
+        <input type="file" id="fileUpload" accept=".xlsx, .xls">
+        <div id="statusMsg" style="margin-top: 15px; color: var(--sub);"></div>
+    </div>
+
+    <div id="actionButtons" style="display: none; margin-bottom: 20px;">
+        <button id="btnDownload" onclick="downloadExcel()">📥 Download Feasibility_Extract.xlsx</button>
+    </div>
+
+    <div class="tab-container" id="resultsArea" style="display: none;">
+        <div class="tab-buttons">
+            <button class="active" onclick="switchTab(event, 'tabSummary')">📋 Feasibility Summary</button>
+            <button onclick="switchTab(event, 'tabRef')">🔍 Detailed References</button>
+            <button onclick="switchTab(event, 'tabMat')">📊 Material Summary</button>
+            <button onclick="switchTab(event, 'tabDict')">📖 Data Dictionary</button>
+        </div>
+        <div class="tab-content">
+            <div id="tabSummary" class="tab-pane active"></div>
+            <div id="tabRef" class="tab-pane"></div>
+            <div id="tabMat" class="tab-pane"></div>
+            <div id="tabDict" class="tab-pane"></div>
+        </div>
+    </div>
+
+<script>
+let globalProcessedData = { summary: [], references: [], materials: [] };
+
+function parseNum(val) { if (!val && val !== 0) return 0; return parseFloat(String(val).replace(/,/g, '')) || 0; }
+function parseStr(val) { return val ? String(val).trim() : ''; }
+function formatDate(d) { return d ? `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}` : ''; }
+
+function parseDate(val) {
+    if (!val) return null;
+    let d = new Date(val);
+    if (!isNaN(d)) return d;
+    let p = String(val).split(/[\/\.]/);
+    if (p.length === 3 && p[2].length === 4) return new Date(p[2], p[0]-1, p[1]); // Handle MM/DD/YYYY
+    return null;
+}
+
+function switchTab(evt, tabId) {
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-buttons button').forEach(b => b.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    evt.currentTarget.classList.add('active');
+}
+
+function renderTable(id, data) {
+    if(!data.length) { document.getElementById(id).innerHTML = '<p style="text-align:center">No data</p>'; return; }
+    let cols = Object.keys(data[0]);
+    let html = '<table><tr>' + cols.map(c=>`<th>${c}</th>`).join('') + '</tr>';
+    data.forEach(r => { html += '<tr>' + cols.map(c=>`<td>${r[c] != null ? r[c] : ''}</td>`).join('') + '</tr>'; });
+    document.getElementById(id).innerHTML = html + '</table>';
+}
+
+const HEADER_MAP = {
+    "Posting Date": "date", "Material": "material", "Short Text": "description",
+    "Amt.in Loc.Cur.": "lc_amount", "Quantity": "quantity", "Order Unit": "unit", "Amount": "fob_amount_fc",
+    "Currency": "currency", "EX. Rate": "ex_rate", "Price Per Unit in Doc Currency": "unit_price_fc",
+    "Price Per Unit in Local Currency": "unit_price_egp", "Local/Import": "local_import",
+    "Name": "supplier_name", "TTL Logistics": "ttl_logistics",
+    "Sea Freight(H)(Val)": "sea_freight", "Freight (Air)": "air_freight", "Customs(L)Value": "customs_value",
+    "Clearance Fee": "clearance_fee", "Handling Duty": "handling_duty", "Anti Dumping Duty": "anti_dumping_duty"
+};
+
+document.getElementById('fileUpload').addEventListener('change', function(e) {
+    const file = e.target.files[0]; if (!file) return;
+    document.getElementById('statusMsg').innerHTML = '<div class="loader"></div> Processing...';
+    const reader = new FileReader();
+    
+    reader.onload = function(e) {
+        try {
+            const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+            let jsonData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+
+            const startDate = document.getElementById('startDate').value ? new Date(document.getElementById('startDate').value) : null;
+            const endDate = document.getElementById('endDate').value ? new Date(document.getElementById('endDate').value+"T23:59:59") : null;
+
+            let records = [];
+            jsonData.forEach(r => {
+                let m = {}; Object.keys(HEADER_MAP).forEach(k => { if(r[k] !== undefined) m[HEADER_MAP[k]] = r[k]; });
+                let mat = parseStr(m.material); if (!mat || mat.toUpperCase() === 'MATERIAL') return;
+                let dt = parseDate(m.date); if (!dt) return;
+                if (startDate && dt < startDate) return;
+                if (endDate && dt > endDate) return;
+
+                let qty = parseNum(m.quantity), lc = parseNum(m.lc_amount), ex = parseNum(m.ex_rate);
+                let upfc = parseNum(m.unit_price_fc), upegp = parseNum(m.unit_price_egp);
+                let type = parseStr(m.local_import) === "Import" ? "Import" : "Local";
+                let sea = parseNum(m.sea_freight), air = parseNum(m.air_freight);
+                let fType = air > 0 ? "Air" : (sea > 0 ? "Sea" : "N/A");
+                let cust = parseNum(m.customs_value) + parseNum(m.clearance_fee) + parseNum(m.handling_duty) + parseNum(m.anti_dumping_duty);
+                let log = parseNum(m.ttl_logistics);
+                let fobEgp = (ex > 1 && upfc > 0) ? upfc * ex : upegp;
+                let cUnit = qty > 0 ? cust / qty : 0, lUnit = qty > 0 ? log / qty : 0;
+                let finalP = type === "Import" ? (fobEgp + cUnit + lUnit) : (qty > 0 ? lc / qty : upegp);
+
+                records.push({ date: dt, material: mat, material_name: parseStr(m.description), local_import: type, freight_type: fType,
+                    supplier_name: parseStr(m.supplier_name), unit: parseStr(m.unit), quantity: qty, lc_amount: lc, ex_rate: ex,
+                    unit_price_fc: upfc, fob_unit_egp: fobEgp, sea_freight_per_unit: qty>0?sea/qty:0, air_freight_per_unit: qty>0?air/qty:0,
+                    total_customs: cust, customs_per_unit: cUnit, logistics_per_unit: lUnit, final_price_egp: finalP });
+            });
+
+            if (!records.length) { document.getElementById('statusMsg').innerHTML = '⚠️ No valid records found.'; return; }
+            processAndDisplay(records);
+            document.getElementById('statusMsg').innerHTML = `✅ Processed ${records.length} records.`;
+            document.getElementById('resultsArea').style.display = 'block';
+            document.getElementById('actionButtons').style.display = 'block';
+        } catch (err) { document.getElementById('statusMsg').innerHTML = `❌ Error: ${err.message}`; }
+    };
+    reader.readAsArrayBuffer(file);
+});
+
+function processAndDisplay(data) {
+    let grouped = {};
+    data.forEach(r => {
+        let k = `${r.material}_${r.local_import}`;
+        if (!grouped[k]) grouped[k] = { material: r.material, material_name: r.material_name, unit: r.unit, type: r.local_import, rows: [] };
+        grouped[k].rows.push(r);
+    });
+
+    let sum = [], ref = [], mat = [];
+    Object.values(grouped).forEach(g => {
+        let rows = g.rows.sort((a,b) => b.date - a.date);
+        let n = rows.length, nLQ = rows.filter(r => r.quarter === rows[0].quarter).length;
+        let basis = nLQ >= 3 ? "Last Quarter" : (nLQ > 0 ? "Last Qtr (Limited)" : "Last POs");
+        let sumQ = rows.reduce((s,r)=>s+r.quantity,0), sumLC = rows.reduce((s,r)=>s+r.lc_amount,0), sumC = rows.reduce((s,r)=>s+r.total_customs,0);
+        let wFinal = sumQ>0 ? rows.reduce((s,r)=>s+(r.final_price_egp*r.quantity),0)/sumQ : 0;
+        let wFobFc = sumQ>0 ? rows.reduce((s,r)=>s+(r.unit_price_fc*r.quantity),0)/sumQ : 0;
+        let wFobEgp = sumQ>0 ? rows.reduce((s,r)=>s+(r.fob_unit_egp*r.quantity),0)/sumQ : 0;
+        let avgEx = rows.reduce((s,r)=>s+r.ex_rate,0)/n;
+        let trueCustP = sumLC>0 ? (sumC/sumLC)*100 : 0;
+        let wCustU = sumQ>0 ? rows.reduce((s,r)=>s+(r.customs_per_unit*r.quantity),0)/sumQ : 0;
+        let wSea = sumQ>0 ? rows.reduce((s,r)=>s+(r.sea_freight_per_unit*r.quantity),0)/sumQ : 0;
+        let wAir = sumQ>0 ? rows.reduce((s,r)=>s+(r.air_freight_per_unit*r.quantity),0)/sumQ : 0;
+        let wLog = sumQ>0 ? rows.reduce((s,r)=>s+(r.logistics_per_unit*r.quantity),0)/sumQ : 0;
+        let isImp = g.type === "Import";
+        let base = { "Material Code": g.material, "Material Name": g.material_name, "Unit": g.unit, "Supply Type": g.type };
+
+        sum.push({ ...base, "Price Basis": basis, "POs Used": n, "FINAL PRICE /UNIT (EGP)": wFinal.toFixed(4),
+            "Avg FOB /UNIT (FC)": isImp?wFobFc.toFixed(4):"", "Avg FOB /UNIT (EGP)": isImp?wFobEgp.toFixed(4):"",
+            "Exchange Rate": isImp?avgEx.toFixed(4):"", "Customs % (True Weighted)": isImp?trueCustP.toFixed(2)+"%":"",
+            "Customs /UNIT": isImp?wCustU.toFixed(4):"", "Sea Freight /UNIT": isImp?wSea.toFixed(4):"",
+            "Air Freight /UNIT": isImp?wAir.toFixed(4):"", "Logistics /UNIT": isImp?wLog.toFixed(4):"", "Last PO": formatDate(rows[0].date) });
+
+        mat.push({ ...base, "Total POs": n, "Total Qty": sumQ.toFixed(2), "FINAL PRICE /UNIT": wFinal.toFixed(4),
+            "Avg FOB (EGP)": isImp?wFobEgp.toFixed(4):"", "Customs %": isImp?trueCustP.toFixed(2)+"%":"", "Logistics /UNIT": isImp?wLog.toFixed(4):"" });
+
+        let std = Math.sqrt(rows.reduce((s,r)=>s+Math.pow(r.final_price_egp-wFinal,2),0)/n);
+        ref.push({ ...base, "Freight": rows[0].freight_type, "Basis": basis, "FINAL PRICE /UNIT": wFinal.toFixed(4),
+            "Low /UNIT": (wFinal-std).toFixed(4), "High /UNIT": (wFinal+std).toFixed(4), "FOB (EGP)": isImp?wFobEgp.toFixed(4):"",
+            "Sea /UNIT": isImp?wSea.toFixed(4):"", "Air /UNIT": isImp?wAir.toFixed(4):"", "Period To": formatDate(rows[0].date) });
+    });
+
+    globalProcessedData = { summary: sum, references: ref, materials: mat };
+    renderTable('tabSummary', sum); renderTable('tabRef', ref); renderTable('tabMat', mat);
+    document.getElementById('tabDict').innerHTML = `<table><tr><th>Column</th><th>Meaning</th></tr>
+        <tr><td>FINAL PRICE /UNIT</td><td>Total Landed Cost. Use this for Feasibility.</td></tr>
+        <tr><td>Customs % (True Weighted)</td><td>Calculated as (Total Customs / Total LC) to prevent outliers.</td></tr>
+        <tr><td>Sea/Air Freight /UNIT</td><td>Specific freight type divided by total quantity.</td></tr></table>`;
+}
+
+async function downloadExcel() {
+    const btn = document.getElementById('btnDownload'); btn.disabled = true; btn.innerText = 'Generating...';
+    const wb = new ExcelJS.Workbook();
+    function addS(name, d) { if(!d.length) return; let ws = wb.addWorksheet(name); ws.columns = Object.keys(d[0]).map(k=>({header:k, key:k, width:20})); ws.addRows(d); }
+    addS('FEASIBILITY_SUMMARY', globalProcessedData.summary);
+    addS('Reference_Prices', globalProcessedData.references);
+    addS('MATERIAL_SUMMARY', globalProcessedData.materials);
+    const buf = await wb.xlsx.writeBuffer();
+    saveAs(new Blob([buf]), `Feasibility_Extract_${Date.now()}.xlsx`);
+    btn.disabled = false; btn.innerText = '📥 Download Feasibility_Extract.xlsx';
+}
+</script>
+</body>
+</html>
+```
